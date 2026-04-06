@@ -17,6 +17,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'work' | 'travel' | 'chat'>('work'); 
   const [currentUser, setCurrentUser] = useState<{userId: string, username: string, color?: string} | null>(null);
   
+  // --- CHỈNH SỬA LẠI LOGIC DARK MODE CHUẨN XÁC ---
   const [isDarkMode, setIsDarkMode] = useState(false);
   
   useEffect(() => {
@@ -42,6 +43,7 @@ export default function App() {
       setIsDarkMode(true);
     }
   };
+  // ------------------------------------------------
 
   const [currentWeek, setCurrentWeek] = useState(getCurrentWeek());
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -170,13 +172,14 @@ export default function App() {
 
   const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('currentUser'); };
 
+  // --- LỚP DIV NGOÀI CÙNG ĐÃ XÓA MÀU BACKGROUND TRẮNG ---
   return (
-    <div className="min-h-screen font-sans text-gray-900 dark:text-gray-100 transition-colors duration-500 relative">
+    <div className={`min-h-screen font-sans transition-colors duration-500 text-gray-900 dark:text-gray-100 relative ${isDarkMode ? 'dark' : ''}`}>
       
-      {/* Component Background Tách Riêng */}
-      <Effects />
+      {/* Component Background Gradient Động + Hạt */}
+      <Effects isDarkMode={isDarkMode} />
 
-      <header className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl shadow-sm sticky top-0 z-30 transition-colors border-b border-white/40 dark:border-gray-800/50">
+      <header className="bg-white/60 dark:bg-gray-900/60 backdrop-blur-xl shadow-sm sticky top-0 z-30 transition-colors border-b border-white/40 dark:border-gray-800/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap gap-4 justify-between items-center">
           <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2"><Calendar className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /><h1 className="text-xl font-black tracking-tight dark:text-white">HIEP MANAGER</h1></div>

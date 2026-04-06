@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^1.48.0",
     "@google/generative-ai": "^0.24.1",
     "@hello-pangea/dnd": "^18.0.1",
     "@types/uuid": "^10.0.0",
@@ -23,6 +24,7 @@
     "jspdf": "^4.2.1",
     "lucide-react": "^1.7.0",
     "mongoose": "^9.4.1",
+    "openai": "^6.33.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-google-autocomplete": "^2.7.5",

@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: 'class', // Dòng này cực kỳ quan trọng để nút bấm Sáng/Tối hoạt động
+  darkMode: 'class', // DÒNG NÀY LÀ CHÌA KHÓA MỞ DARK MODE
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",

@@ -1,17 +1,15 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai"; // SỬ DỤNG SDK MỚI NHẤT CỦA GOOGLE
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- CẤU HÌNH AI ---
-// Bạn yêu cầu giữ nguyên code AI và đưa Key Poe vào. 
-// LƯU Ý MẠNH MẼ: Thư viện Google sẽ không hiểu Key của Poe và có thể báo lỗi Unauthorized (401/403).
-const genAI = new GoogleGenerativeAI("sk-poe-D5EM-eqxtx4T_NnXhoxZcQ_wbN79Wz8MPDA3brS2xYw"); 
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+// --- CẤU HÌNH GEMINI AI (SDK MỚI) ---
+// Thay "YOUR_GEMINI_API_KEY" bằng key lấy từ Google AI Studio
+const ai = new GoogleGenAI({ apiKey: "AIzaSyCsTqVbtmX5UBwvhBo-zp9vas-l8HuBDiU" }); 
 
 const MONGO_URI = "mongodb://tapkichco102_db_user:123u@ac-inv7mum-shard-00-00.q84ato5.mongodb.net:27017,ac-inv7mum-shard-00-01.q84ato5.mongodb.net:27017,ac-inv7mum-shard-00-02.q84ato5.mongodb.net:27017/?ssl=true&replicaSet=atlas-37pyc3-shard-0&authSource=admin&appName=Cluster0";
 
@@ -19,6 +17,7 @@ mongoose.connect(MONGO_URI).then(() => console.log("✅ MongoDB connected")).cat
 
 const getRandomColor = () => { const colors = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4caf50', '#8bc34a', '#ff9800', '#ff5722', '#795548']; return colors[Math.floor(Math.random() * colors.length)]; };
 
+// --- SCHEMAS ---
 const userSchema = new mongoose.Schema({ username: { type: String, required: true, unique: true }, password: { type: String, required: true }, color: { type: String, default: getRandomColor }, createdAt: { type: Date, default: Date.now, expires: 15552000 }});
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 const bookingSchema = new mongoose.Schema({ userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, weekId: { type: String, required: true }, date: { type: Date, required: true }, slotIndex: { type: Number, required: true }, content: { type: String, default: "" } });
@@ -47,22 +46,46 @@ app.post('/api/chats/:id/message', async (req, res) => {
         const chat = await Chat.findById(req.params.id);
         if (!chat) return res.status(404).json({ error: "Không tìm thấy đoạn chat" });
 
+        if (ai.apiKey === "YOUR_GEMINI_API_KEY" || !ai.apiKey) {
+            return res.status(500).json({ error: "BẠN CHƯA CÀI API KEY! Hãy dán Key vào api/index.js" });
+        }
+
+        // LẤY DỮ LIỆU HỆ THỐNG
         const allTrips = await Trip.find();
         const allBookings = await Booking.find().populate('userId', 'username');
 
-        let systemContext = `\n\n--- DỮ LIỆU NỘI BỘ HỆ THỐNG ---\n`;
-        systemContext += `* LỊCH RẢNH:\n`;
+        let systemContext = `Bạn là trợ lý AI thông minh tích hợp trong ứng dụng Hiep Manager. Hãy suy nghĩ thật kỹ và trả lời dựa trên dữ liệu hệ thống bên dưới:\n\n* LỊCH RẢNH:\n`;
         allBookings.forEach(b => { systemContext += `- ${b.userId.username} (Ngày ${new Date(b.date).toLocaleDateString('vi-VN')}): ${b.content || 'Rảnh'}\n`; });
         systemContext += `* LỊCH TRÌNH DU LỊCH:\n`;
         allTrips.forEach(t => { systemContext += `- "${t.title}": ${t.itinerary.map(i => `${i.time} tại ${i.activity}`).join(', ')}\n`; });
-        systemContext += `\nĐóng vai trợ lý AI thông minh, ưu tiên trả lời dựa trên dữ liệu trên nếu người dùng hỏi về lịch rảnh hoặc lịch trình. Trả lời tự nhiên, thân thiện.`;
 
-        const history = chat.messages.map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }));
-        const chatSession = model.startChat({ history });
-        
-        const result = await chatSession.sendMessage(text + systemContext);
-        const aiResponse = result.response.text();
+        // Build mảng nội dung hội thoại chuẩn SDK mới
+        const contents = chat.messages.map(msg => ({
+            role: msg.role, // 'user' hoặc 'model'
+            parts: [{ text: msg.text }]
+        }));
 
+        // Thêm câu hỏi mới của người dùng
+        contents.push({
+            role: 'user',
+            parts: [{ text: text }]
+        });
+
+        // GỌI AI GEMINI 3 FLASH PREVIEW VỚI TÍNH NĂNG THINKING
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview', // Mô hình mới nhất
+            contents: contents,
+            config: {
+                systemInstruction: systemContext, // Nạp Context hệ thống vào Instruction
+                thinkingConfig: {
+                    thinkingLevel: "HIGH" // Kích hoạt khả năng suy luận sâu
+                }
+            }
+        });
+
+        const aiResponse = response.text || "Xin lỗi, tôi không thể xử lý yêu cầu lúc này.";
+
+        // Lưu vào DB
         chat.messages.push({ role: 'user', text });
         chat.messages.push({ role: 'model', text: aiResponse });
         if (chat.messages.length <= 2) chat.title = text.substring(0, 30) + "...";
@@ -72,11 +95,11 @@ app.post('/api/chats/:id/message', async (req, res) => {
         res.json(chat);
     } catch (e) {
         console.error("LỖI AI:", e);
-        res.status(500).json({ error: "AI đang bận hoặc KEY BỊ LỖI. Vui lòng xem log Server Nodejs!" });
+        res.status(500).json({ error: "AI đang bận hoặc có lỗi cấu hình!" });
     }
 });
 
-// --- CÁC API KHÁC GIỮ NGUYÊN ---
+// --- CÁC API KHÁC GIỮ NGUYÊN HOÀN TOÀN ---
 app.get('/api/trips', async (req, res) => { try { res.json(await Trip.find().sort({ updatedAt: -1 })); } catch (e) { res.status(500).json({ error: e.message }); }});
 app.post('/api/trips', async (req, res) => { try { if (await Trip.countDocuments() >= 3) return res.status(400).json({ error: "Tối đa 3 lịch trình." }); const trip = new Trip(req.body); await trip.save(); res.status(201).json(trip); } catch (e) { res.status(500).json({ error: e.message }); }});
 app.put('/api/trips/:id', async (req, res) => { try { res.json(await Trip.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: Date.now() }, { new: true })); } catch (e) { res.status(500).json({ error: e.message }); }});
