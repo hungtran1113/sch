@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 export interface User {
   _id: string;
   username: string;
+  createdAt?: string;
 }
 
 export interface Booking {
@@ -14,7 +15,6 @@ export interface Booking {
   content: string;
 }
 
-// Fallback logic for Local Storage
 export class ApiClient {
   private static getLocalUsers(): any[] {
     return JSON.parse(localStorage.getItem('users') || '[]');
@@ -35,7 +35,6 @@ export class ApiClient {
       throw new Error(err.error || 'Registration failed');
     } catch (error: any) {
       if (error.message !== 'Failed to fetch') throw error;
-      // Fallback
       if (!/[a-zA-Z]/.test(username)) throw new Error("Tên đăng ký phải có chữ.");
       const users = this.getLocalUsers();
       if (users.find(u => u.username === username)) throw new Error("Tài khoản đã tồn tại.");
@@ -58,7 +57,6 @@ export class ApiClient {
       throw new Error(err.error || 'Login failed');
     } catch (error: any) {
       if (error.message !== 'Failed to fetch') throw error;
-      // Fallback
       const users = this.getLocalUsers();
       const user = users.find(u => u.username === username && u.password === password);
       if (!user) throw new Error("Sai tài khoản hoặc mật khẩu.");
@@ -73,7 +71,6 @@ export class ApiClient {
       throw new Error('Failed to fetch bookings');
     } catch (error: any) {
       if (error.message !== 'Failed to fetch') throw error;
-      // Fallback
       const bookings = this.getLocalBookings();
       const users = this.getLocalUsers();
       return bookings
@@ -96,7 +93,6 @@ export class ApiClient {
       throw new Error('Failed to save booking');
     } catch (error: any) {
       if (error.message !== 'Failed to fetch') throw error;
-      // Fallback
       const bookings = this.getLocalBookings();
       const newBooking = { _id: uuidv4(), userId, weekId, date, slotIndex, content };
       bookings.push(newBooking);
@@ -104,23 +100,22 @@ export class ApiClient {
       return { success: true, booking: newBooking };
     }
   }
+
   static async getUsers(): Promise<User[]> {
-    try {
-      const res = await fetch('/api/users');
-      if (res.ok) return await res.json();
-      throw new Error('Lỗi tải danh sách người dùng');
-    } catch (error) {
-      throw error;
-    }
+    const res = await fetch('/api/users');
+    if (res.ok) return await res.json();
+    throw new Error('Lỗi tải danh sách người dùng');
   }
 
   static async deleteUser(id: string): Promise<any> {
-    try {
-      const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
-      if (res.ok) return await res.json();
-      throw new Error('Lỗi xóa người dùng');
-    } catch (error) {
-      throw error;
-    }
+    const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+    if (res.ok) return await res.json();
+    throw new Error('Lỗi xóa người dùng');
+  }
+
+  static async getAllBookingsForExport(): Promise<Booking[]> {
+    const res = await fetch('/api/admin/export-all');
+    if (res.ok) return await res.json();
+    throw new Error('Không thể lấy dữ liệu xuất file');
   }
 }

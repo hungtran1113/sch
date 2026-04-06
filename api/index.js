@@ -141,6 +141,16 @@ if (process.env.NODE_ENV !== 'production') {
     const PORT = 3000;
     app.listen(PORT, () => console.log(`Backend server đang chạy ở http://localhost:${PORT}`));
 }
-
+// API Lấy toàn bộ dữ liệu lịch trình để xuất Excel (Chỉ dành cho logic Admin)
+app.get('/api/admin/export-all', async (req, res) => {
+    try {
+        const allBookings = await Booking.find({})
+            .populate('userId', 'username')
+            .sort({ date: 1, slotIndex: 1 }); // Sắp xếp theo ngày và ca
+        res.status(200).json(allBookings);
+    } catch (error) {
+        res.status(500).json({ error: "Lỗi lấy dữ liệu xuất file" });
+    }
+});
 // Chuyển từ module.exports sang export default cho Vercel/ES Module
 export default app;
