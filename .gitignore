@@ -1,25 +1,44 @@
-# Bỏ qua thư mục chứa thư viện (Rất nặng, Vercel sẽ tự cài lại)
+# Dependencies
 node_modules/
+api/node_modules/
 
-# Bỏ qua các file build của Vite
+# Build
 dist/
 dist-ssr/
 build/
 
-# Bỏ qua các file chứa biến môi trường (Bảo mật)
+# Env
 .env
 .env.local
 .env.development
 .env.production
+api/.env
 
-# Bỏ qua các file log báo lỗi của hệ thống
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Bỏ qua các file rác của hệ điều hành và editor
+# Cache
+.vite/
+.cache/
+.temp/
+.tmp/
+
+# TypeScript
+*.tsbuildinfo
+
+# OS & Editor
 .DS_Store
 .vscode/
 .idea/
 Thumbs.db
+*.swp
+*.swo
+*~
+
+# Vercel
+.vercel

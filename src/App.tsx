@@ -3,7 +3,7 @@ import { format, isSameDay } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { ApiClient, Booking } from './apiClient';
 import { getCurrentWeek, getNextWeek, getPrevWeek, getDaysOfWeek, getWeekId, parseWeekId, generateWeekOptions } from './utils';
-import { Calendar, ChevronLeft, ChevronRight, Save, X, Users, Download, CheckCircle2, MessageSquare, Eye, FileCode, Moon, Sun, BotMessageSquare } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Save, X, Users, Download, CheckCircle2, MessageSquare, Eye, FileCode, Moon, Sun, BotMessageSquare, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { Document, Packer, Paragraph, Table, TableCell, TableRow, WidthType, AlignmentType, HeadingLevel, TextRun } from 'docx';
@@ -17,7 +17,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'work' | 'travel' | 'chat'>('work'); 
   const [currentUser, setCurrentUser] = useState<{userId: string, username: string, color?: string} | null>(null);
   
-  // --- CHỈNH SỬA LẠI LOGIC DARK MODE CHUẨN XÁC ---
   const [isDarkMode, setIsDarkMode] = useState(false);
   
   useEffect(() => {
@@ -43,7 +42,6 @@ export default function App() {
       setIsDarkMode(true);
     }
   };
-  // ------------------------------------------------
 
   const [currentWeek, setCurrentWeek] = useState(getCurrentWeek());
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -63,6 +61,22 @@ export default function App() {
   const handleOpenManageUsers = async () => { try { setUsersList(await ApiClient.getUsers()); setIsManageUsersOpen(true); } catch (e) { alert("Lỗi"); } };
   const handleDeleteUser = async (id: string) => { if (!window.confirm("Xóa tài khoản này?")) return; try { await ApiClient.deleteUser(id); setUsersList(usersList.filter(u => u._id !== id)); setBookings(await ApiClient.getBookings(getWeekId(currentWeek))); } catch (e) { alert("Lỗi"); } };
   
+  // --- HÀM XỬ LÝ XÓA TOÀN BỘ LỊCH ---
+  const handleClearAllBookings = async () => {
+    if (!window.confirm("⚠️ CẢNH BÁO NGUY HIỂM: Bạn có chắc chắn muốn dọn dẹp sạch sẽ toàn bộ ô checkbox và nội dung lịch rảnh của tất cả mọi người không? Hành động này không thể hoàn tác!")) return;
+    try {
+        setLoading(true);
+        await ApiClient.clearAllBookings();
+        setBookings([]); 
+        setPendingBookings([]);
+        alert("Đã xóa sạch sẽ toàn bộ lịch rảnh hệ thống!");
+    } catch (e: any) {
+        alert("Lỗi khi xóa: " + e.message);
+    } finally {
+        setLoading(false);
+    }
+  };
+
   const handleExportExcelAdmin = async () => { 
     try { 
         setLoading(true); 
@@ -172,11 +186,9 @@ export default function App() {
 
   const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('currentUser'); };
 
-  // --- LỚP DIV NGOÀI CÙNG ĐÃ XÓA MÀU BACKGROUND TRẮNG ---
   return (
     <div className={`min-h-screen font-sans transition-colors duration-500 text-gray-900 dark:text-gray-100 relative ${isDarkMode ? 'dark' : ''}`}>
       
-      {/* Component Background Gradient Động + Hạt */}
       <Effects isDarkMode={isDarkMode} />
 
       <header className="bg-white/60 dark:bg-gray-900/60 backdrop-blur-xl shadow-sm sticky top-0 z-30 transition-colors border-b border-white/40 dark:border-gray-800/50">
@@ -202,6 +214,10 @@ export default function App() {
               <div className="hidden md:flex space-x-2">
                 <button onClick={handleExportDocAdmin} className="flex items-center space-x-1 bg-blue-100/80 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-3 py-2 rounded-md text-xs font-bold backdrop-blur-sm"><FileCode className="w-4 h-4" /> <span>Docs</span></button>
                 <button onClick={handleExportExcelAdmin} className="flex items-center space-x-1 bg-green-100/80 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-3 py-2 rounded-md text-xs font-bold backdrop-blur-sm"><Download className="w-4 h-4" /> <span>Sheets</span></button>
+                
+                {/* NÚT XÓA TOÀN BỘ LỊCH TRÌNH CỦA ADMIN (MÀU ĐỎ) */}
+                <button onClick={handleClearAllBookings} className="flex items-center space-x-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-md text-xs font-bold backdrop-blur-sm transition-colors shadow-sm"><Trash2 className="w-4 h-4" /> <span>Xóa Lịch</span></button>
+                
                 <button onClick={handleOpenManageUsers} className="flex items-center space-x-1 bg-red-100/80 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-3 py-2 rounded-md text-xs font-bold backdrop-blur-sm"><Users className="w-4 h-4" /> <span>User</span></button>
               </div>
             )}
