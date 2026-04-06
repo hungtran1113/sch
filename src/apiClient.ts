@@ -1,121 +1,33 @@
 import { v4 as uuidv4 } from 'uuid';
 
-export interface User {
-  _id: string;
-  username: string;
-  createdAt?: string;
-}
-
-export interface Booking {
-  _id: string;
-  userId: User;
-  weekId: string;
-  date: string;
-  slotIndex: number;
-  content: string;
-}
+export interface User { _id: string; username: string; color?: string; createdAt?: string; }
+export interface Booking { _id: string; userId: User; weekId: string; date: string; slotIndex: number; content: string; }
 
 export class ApiClient {
-  private static getLocalUsers(): any[] {
-    return JSON.parse(localStorage.getItem('users') || '[]');
+  static async register(username: string, password: string): Promise<any> {
+    const res = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Lỗi'); return data;
   }
-  private static getLocalBookings(): any[] {
-    return JSON.parse(localStorage.getItem('bookings') || '[]');
+  static async login(username: string, password: string): Promise<any> {
+    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Lỗi'); return data;
+  }
+  static async getBookings(weekId: string): Promise<Booking[]> { return await (await fetch(`/api/bookings?weekId=${weekId}`)).json(); }
+  
+  // SỬA: Thêm action
+  static async saveBooking(userId: string, weekId: string, date: string, slotIndex: number, content: string, action?: string): Promise<any> {
+    const res = await fetch('/api/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, weekId, date, slotIndex, content, action }) });
+    const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Lỗi'); return data;
   }
   
-  static async register(username: string, password: string):Promise<{userId: string}> {
-    try {
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      if (res.ok) return await res.json();
-      const err = await res.json();
-      throw new Error(err.error || 'Registration failed');
-    } catch (error: any) {
-      if (error.message !== 'Failed to fetch') throw error;
-      if (!/[a-zA-Z]/.test(username)) throw new Error("Tên đăng ký phải có chữ.");
-      const users = this.getLocalUsers();
-      if (users.find(u => u.username === username)) throw new Error("Tài khoản đã tồn tại.");
-      const newUser = { _id: uuidv4(), username, password };
-      users.push(newUser);
-      localStorage.setItem('users', JSON.stringify(users));
-      return { userId: newUser._id };
-    }
+  static async getTrips(): Promise<any[]> { return await (await fetch('/api/trips')).json(); }
+  static async createTrip(data: any): Promise<any> {
+    const res = await fetch('/api/trips', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    const result = await res.json(); if (!res.ok) throw new Error(result.error || 'Lỗi'); return result;
   }
-
-  static async login(username: string, password: string):Promise<{userId: string, username: string}> {
-    try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      if (res.ok) return await res.json();
-      const err = await res.json();
-      throw new Error(err.error || 'Login failed');
-    } catch (error: any) {
-      if (error.message !== 'Failed to fetch') throw error;
-      const users = this.getLocalUsers();
-      const user = users.find(u => u.username === username && u.password === password);
-      if (!user) throw new Error("Sai tài khoản hoặc mật khẩu.");
-      return { userId: user._id, username: user.username };
-    }
-  }
-
-  static async getBookings(weekId: string):Promise<Booking[]> {
-    try {
-      const res = await fetch(`/api/bookings?weekId=${weekId}`);
-      if (res.ok) return await res.json();
-      throw new Error('Failed to fetch bookings');
-    } catch (error: any) {
-      if (error.message !== 'Failed to fetch') throw error;
-      const bookings = this.getLocalBookings();
-      const users = this.getLocalUsers();
-      return bookings
-        .filter(b => b.weekId === weekId)
-        .map(b => ({
-          ...b,
-          userId: users.find(u => u._id === b.userId) || { _id: b.userId, username: 'Unknown' }
-        }));
-    }
-  }
-
-  static async saveBooking(userId: string, weekId: string, date: string, slotIndex: number, content: string):Promise<any> {
-    try {
-      const res = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, weekId, date, slotIndex, content })
-      });
-      if (res.ok) return await res.json();
-      throw new Error('Failed to save booking');
-    } catch (error: any) {
-      if (error.message !== 'Failed to fetch') throw error;
-      const bookings = this.getLocalBookings();
-      const newBooking = { _id: uuidv4(), userId, weekId, date, slotIndex, content };
-      bookings.push(newBooking);
-      localStorage.setItem('bookings', JSON.stringify(bookings));
-      return { success: true, booking: newBooking };
-    }
-  }
-
-  static async getUsers(): Promise<User[]> {
-    const res = await fetch('/api/users');
-    if (res.ok) return await res.json();
-    throw new Error('Lỗi tải danh sách người dùng');
-  }
-
-  static async deleteUser(id: string): Promise<any> {
-    const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
-    if (res.ok) return await res.json();
-    throw new Error('Lỗi xóa người dùng');
-  }
-
-  static async getAllBookingsForExport(): Promise<Booking[]> {
-    const res = await fetch('/api/admin/export-all');
-    if (res.ok) return await res.json();
-    throw new Error('Không thể lấy dữ liệu xuất file');
-  }
+  static async updateTrip(id: string, data: any): Promise<any> { return await (await fetch(`/api/trips/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json(); }
+  static async deleteTrip(id: string): Promise<any> { return await (await fetch(`/api/trips/${id}`, { method: 'DELETE' })).json(); }
+  static async getUsers(): Promise<User[]> { return await (await fetch('/api/users')).json(); }
+  static async deleteUser(id: string): Promise<any> { return await (await fetch(`/api/users/${id}`, { method: 'DELETE' })).json(); }
+  static async getAllBookingsForExport(): Promise<Booking[]> { return await (await fetch('/api/admin/export-all')).json(); }
 }

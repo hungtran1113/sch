@@ -7,18 +7,21 @@ app.use(cors());
 app.use(express.json());
 
 const MONGO_URI = "mongodb://tapkichco102_db_user:123u@ac-inv7mum-shard-00-00.q84ato5.mongodb.net:27017,ac-inv7mum-shard-00-01.q84ato5.mongodb.net:27017,ac-inv7mum-shard-00-02.q84ato5.mongodb.net:27017/?ssl=true&replicaSet=atlas-37pyc3-shard-0&authSource=admin&appName=Cluster0";
-// const  = "mongodb+srv://tapkichco102_db_user:123u@cluster0.q84ato5.mongodb.net/?appName=Cluster0";
-
 
 mongoose.connect(MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
-  .catch(err => console.error("MongoDB connection error:", err));
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch(err => console.error("❌ MongoDB connection error:", err));
 
-// Schema definitions
+const getRandomColor = () => {
+    const colors = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4caf50', '#8bc34a', '#ff9800', '#ff5722', '#795548'];
+    return colors[Math.floor(Math.random() * colors.length)];
+};
+
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now, expires: 15552000 } // 6 months
+    color: { type: String, default: getRandomColor }, 
+    createdAt: { type: Date, default: Date.now, expires: 15552000 }
 });
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 
@@ -27,130 +30,99 @@ const bookingSchema = new mongoose.Schema({
     weekId: { type: String, required: true }, 
     date: { type: Date, required: true },
     slotIndex: { type: Number, required: true },
-    content: { type: String, default: "" },
-    createdAt: { type: Date, default: Date.now, expires: 15552000 } // 6 months
+    content: { type: String, default: "" } 
 });
 const Booking = mongoose.models.Booking || mongoose.model('Booking', bookingSchema);
 
-// --- TỰ ĐỘNG TẠO TÀI KHOẢN ADMIN MẶC ĐỊNH ---
+const tripSchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    itinerary: [{
+        time: String, activity: String, location: String, mapUrl: String, note: String, costExpr: { type: String, default: "" } 
+    }],
+    updatedAt: { type: Date, default: Date.now }
+});
+const Trip = mongoose.models.Trip || mongoose.model('Trip', tripSchema);
+
 const initAdmin = async () => {
     try {
         const adminExists = await User.findOne({ username: 'hiep14082005' });
-        if (!adminExists) {
-            await User.create({ username: 'hiep14082005', password: 'Hiep14082005' });
-            console.log("Đã tạo tài khoản Admin mặc định!");
-        }
+        if (!adminExists) await User.create({ username: 'hiep14082005', password: 'Hiep14082005', color: '#111827' });
     } catch (err) { console.error("Lỗi tạo admin:", err); }
 };
 initAdmin();
-// --------------------------------------------
 
-// API Routes
+app.get('/api/trips', async (req, res) => {
+    try { res.json(await Trip.find().sort({ updatedAt: -1 })); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/trips', async (req, res) => {
+    try {
+        if (await Trip.countDocuments() >= 3) return res.status(400).json({ error: "Tối đa 3 lịch trình." });
+        const trip = new Trip(req.body); await trip.save(); res.status(201).json(trip);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/trips/:id', async (req, res) => {
+    try { res.json(await Trip.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: Date.now() }, { new: true })); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/trips/:id', async (req, res) => {
+    try { await Trip.findByIdAndDelete(req.params.id); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/register', async (req, res) => {
     try {
         const { username, password } = req.body;
-        if (!/[a-zA-Z]/.test(username)) {
-            return res.status(400).json({ error: "Tên đăng ký phải có chữ." });
-        }
-        const existing = await User.findOne({ username });
-        if (existing) {
-            return res.status(400).json({ error: "Tài khoản đã tồn tại." });
-        }
-        const user = new User({ username, password });
-        await user.save();
-        res.status(201).json({ success: true, userId: user._id });
-    } catch (error) {
-        res.status(500).json({ error: "Registration failed", details: error.message });
-    }
+        if (!/[a-zA-Z]/.test(username)) return res.status(400).json({ error: "Tên phải có chữ." });
+        if (await User.findOne({ username })) return res.status(400).json({ error: "Tài khoản đã tồn tại." });
+        const user = new User({ username, password }); await user.save(); res.status(201).json({ success: true, userId: user._id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         const user = await User.findOne({ username, password });
-        if (!user) {
-            return res.status(401).json({ error: "Sai tài khoản hoặc mật khẩu." });
-        }
-        res.status(200).json({ success: true, userId: user._id, username: user.username });
-    } catch (error) {
-        res.status(500).json({ error: "Login failed" });
-    }
+        if (!user) return res.status(401).json({ error: "Sai tài khoản/mật khẩu." });
+        res.json({ userId: user._id, username: user.username });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.get('/api/bookings', async (req, res) => {
-    try {
-        const { weekId } = req.query;
-        const bookings = await Booking.find({ weekId }).populate('userId', 'username');
-        res.status(200).json(bookings);
-    } catch (error) {
-        res.status(500).json({ error: "Failed to fetch bookings" });
-    }
+    try { res.json(await Booking.find({ weekId: req.query.weekId }).populate('userId', 'username color')); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// CẬP NHẬT: API Lưu/Xóa Lịch
+// FIX LOGIC LƯU LỊCH CHUẨN XÁC
 app.post('/api/bookings', async (req, res) => {
     try {
-        const { userId, weekId, date, slotIndex, content } = req.body;
+        const { userId, weekId, date, slotIndex, content, action } = req.body;
         
-        if (!content || content.trim() === '') {
-            await Booking.findOneAndDelete({ weekId, date, slotIndex });
-            return res.status(200).json({ success: true, message: "Đã xóa" });
+        if (action === 'delete') {
+            await Booking.findOneAndDelete({ userId, weekId, date, slotIndex });
+            return res.json({ success: true });
         }
+        
+        const slotBookings = await Booking.find({ weekId, date, slotIndex });
+        const hasMyBooking = slotBookings.some(b => b.userId.toString() === userId);
+        
+        if (!hasMyBooking && slotBookings.length >= 15) return res.status(400).json({ error: "Đã đạt tối đa 15 người." });
 
-        let booking = await Booking.findOne({ weekId, date, slotIndex });
-        if (booking) {
-            booking.content = content; 
-            await booking.save();
-        } else {
-            booking = new Booking({ userId, weekId, date, slotIndex, content });
-            await booking.save();
-        }
-        res.status(200).json(booking);
-    } catch (error) {
-        res.status(500).json({ error: "Failed to create/update booking" });
-    }
+        // Cho phép content là "" (chuỗi rỗng) để đánh dấu đã tham gia
+        const booking = await Booking.findOneAndUpdate(
+            { userId, weekId, date, slotIndex }, { content: content || "" }, { upsert: true, new: true }
+        );
+        res.json(booking);
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// THÊM: API Quản lý User
+app.get('/api/admin/export-all', async (req, res) => {
+    try { res.json(await Booking.find().populate('userId', 'username color').sort({ date: 1 })); } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get('/api/users', async (req, res) => {
-    try {
-        const users = await User.find({}, 'username createdAt');
-        res.status(200).json(users);
-    } catch (error) { 
-        res.status(500).json({ error: "Lỗi lấy danh sách" }); 
-    }
+    try { res.json(await User.find({}, 'username color createdAt')); } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.delete('/api/users/:id', async (req, res) => {
     try {
         const user = await User.findById(req.params.id);
-        if (!user) return res.status(404).json({ error: "Không tìm thấy user" });
-        
-        if (user.username === 'hiep14082005') return res.status(403).json({ error: "Không thể xóa Admin" });
-        
-        await User.findByIdAndDelete(req.params.id);
-        await Booking.deleteMany({ userId: req.params.id }); 
-        res.status(200).json({ success: true });
-    } catch (error) { 
-        res.status(500).json({ error: "Lỗi xóa user" }); 
-    }
+        if (user?.username === 'hiep14082005') return res.status(403).json({ error: "Không thể xóa Admin" });
+        await User.findByIdAndDelete(req.params.id); await Booking.deleteMany({ userId: req.params.id }); res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Khởi động Server chạy nội bộ trên Localhost
-if (process.env.NODE_ENV !== 'production') {
-    const PORT = 3000;
-    app.listen(PORT, () => console.log(`Backend server đang chạy ở http://localhost:${PORT}`));
-}
-// API Lấy toàn bộ dữ liệu lịch trình để xuất Excel (Chỉ dành cho logic Admin)
-app.get('/api/admin/export-all', async (req, res) => {
-    try {
-        const allBookings = await Booking.find({})
-            .populate('userId', 'username')
-            .sort({ date: 1, slotIndex: 1 }); // Sắp xếp theo ngày và ca
-        res.status(200).json(allBookings);
-    } catch (error) {
-        res.status(500).json({ error: "Lỗi lấy dữ liệu xuất file" });
-    }
-});
-// Chuyển từ module.exports sang export default cho Vercel/ES Module
+if (process.env.NODE_ENV !== 'production') app.listen(3000, () => console.log(`🚀 Server: http://localhost:3000`));
 export default app;
