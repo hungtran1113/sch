@@ -3,17 +3,17 @@ import { format, isSameDay } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { ApiClient, Booking } from './apiClient';
 import { getCurrentWeek, getNextWeek, getPrevWeek, getDaysOfWeek, getWeekId, parseWeekId, generateWeekOptions } from './utils';
-import { Calendar, ChevronLeft, ChevronRight, Save, X, Users, Download, CheckCircle2, MessageSquare, Eye } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Save, X, Users, Download, CheckCircle2, MessageSquare, Eye, FileCode } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { Document, Packer, Paragraph, Table, TableCell, TableRow, WidthType, AlignmentType, HeadingLevel, TextRun } from 'docx';
 import TravelPlanner from './TravelPlanner';
 
-// FIX: Chỉ dùng 1 khung giờ cho cả ngày
 const TIME_SLOTS = ['Nội dung trong ngày'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'work' | 'travel'>('work'); 
-  const [currentUser, setCurrentUser] = useState<{userId: string, username: string} | null>(null);
+  const [currentUser, setCurrentUser] = useState<{userId: string, username: string, color?: string} | null>(null);
   const [currentWeek, setCurrentWeek] = useState(getCurrentWeek());
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingBookings, setPendingBookings] = useState<{date: string, slotIndex: number, content: string, isDelete?: boolean}[]>([]);
@@ -32,24 +32,95 @@ export default function App() {
   const handleOpenManageUsers = async () => { try { setUsersList(await ApiClient.getUsers()); setIsManageUsersOpen(true); } catch (e) { alert("Lỗi"); } };
   const handleDeleteUser = async (id: string) => { if (!window.confirm("Xóa tài khoản này?")) return; try { await ApiClient.deleteUser(id); setUsersList(usersList.filter(u => u._id !== id)); setBookings(await ApiClient.getBookings(getWeekId(currentWeek))); } catch (e) { alert("Lỗi"); } };
   
-  // FIX: XUẤT GOOGLE SHEETS BẰNG BLOB CHUẨN XÁC KHÔNG LỖI
-  const handleExportExcel = async () => { 
+  // XUẤT GOOGLE SHEETS 3 TUẦN
+  const handleExportExcelAdmin = async () => { 
     try { 
-      setLoading(true); 
-      const allData = await ApiClient.getAllBookingsForExport(); 
-      const excelData = allData.map(b => ({ 
-          'Ngày': format(new Date(b.date), 'dd/MM/yyyy'), 
-          'Khung Giờ': TIME_SLOTS[b.slotIndex] || 'Cả ngày', 
-          'Người Đăng Ký': b.userId?.username || 'Ẩn danh', 
-          'Nội Dung': b.content || '' 
-      })); 
-      const ws = XLSX.utils.json_to_sheet(excelData); 
-      const wb = XLSX.utils.book_new(); 
-      XLSX.utils.book_append_sheet(wb, ws, "Lich_Ranh"); 
-      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' });
-      saveAs(blob, `Lich_Ranh.xlsx`); 
+        setLoading(true); 
+        const targetWeeks = [getPrevWeek(currentWeek), currentWeek, getNextWeek(currentWeek)];
+        const allData = await ApiClient.getAllBookingsForExport(); 
+        const excelData: any[] = [];
+
+        for (const week of targetWeeks) {
+            const weekIdStr = getWeekId(week);
+            const days = getDaysOfWeek(week);
+            excelData.push({ 'Tuần': `--- TUẦN ${weekIdStr} ---`, 'Ngày': '', 'Thứ': '', 'Người Đăng Ký': '', 'Nội Dung': '' });
+            
+            let weekUsers = new Set<string>();
+
+            for (const day of days) {
+                const dayBookings = allData.filter(b => isSameDay(new Date(b.date), day));
+                if (dayBookings.length === 0) {
+                    excelData.push({ 'Tuần': weekIdStr, 'Ngày': format(day, 'dd/MM/yyyy'), 'Thứ': format(day, 'EEEE', { locale: vi }), 'Người Đăng Ký': '(Trống)', 'Nội Dung': '' });
+                } else {
+                    dayBookings.forEach(b => {
+                        weekUsers.add(b.userId?.username);
+                        excelData.push({ 'Tuần': weekIdStr, 'Ngày': format(day, 'dd/MM/yyyy'), 'Thứ': format(day, 'EEEE', { locale: vi }), 'Người Đăng Ký': b.userId?.username, 'Nội Dung': b.content || 'Đã tham gia' });
+                    });
+                }
+            }
+            
+            excelData.push({ 'Tuần': `Tổng kết Tuần`, 'Ngày': 'Tham gia:', 'Thứ': Array.from(weekUsers).join(', ') || 'Không có', 'Người Đăng Ký': '', 'Nội Dung': '' });
+            excelData.push({ 'Tuần': '', 'Ngày': '', 'Thứ': '', 'Người Đăng Ký': '', 'Nội Dung': '' }); 
+        }
+
+        const ws = XLSX.utils.json_to_sheet(excelData); 
+        const wb = XLSX.utils.book_new(); 
+        XLSX.utils.book_append_sheet(wb, ws, "Lich_Ranh"); 
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        saveAs(new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' }), `Lich_Ranh_3_Tuan.xlsx`); 
     } catch (e) { alert("Có lỗi khi xuất file!"); } finally { setLoading(false); } 
+  };
+
+  // XUẤT GOOGLE DOCS 3 TUẦN
+  const handleExportDocAdmin = async () => {
+    try {
+        setLoading(true);
+        const targetWeeks = [getPrevWeek(currentWeek), currentWeek, getNextWeek(currentWeek)];
+        const allData = await ApiClient.getAllBookingsForExport();
+        const docChildren: any[] = [];
+        
+        for (const week of targetWeeks) {
+            const weekIdStr = getWeekId(week);
+            const days = getDaysOfWeek(week);
+            docChildren.push(new Paragraph({ text: `Tuần: ${weekIdStr}`, heading: HeadingLevel.HEADING_2, spacing: { before: 400, after: 200 } }));
+            
+            const tableRows = [];
+            tableRows.push(new TableRow({ children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Thứ / Ngày", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Người tham gia & Nội dung", bold: true })] })] })
+            ]}));
+            
+            let weekUsers = new Set<string>();
+
+            for (const day of days) {
+                const dayBookings = allData.filter(b => isSameDay(new Date(b.date), day));
+                let cellContent = [];
+                if (dayBookings.length === 0) {
+                    cellContent.push(new Paragraph("(Trống)"));
+                } else {
+                    dayBookings.forEach(b => {
+                        weekUsers.add(b.userId?.username);
+                        cellContent.push(new Paragraph({ children: [
+                            new TextRun({ text: `${b.userId?.username}: `, bold: true }),
+                            new TextRun({ text: b.content || "Đã tham gia" })
+                        ]}));
+                    });
+                }
+                tableRows.push(new TableRow({ children: [
+                    new TableCell({ children: [new Paragraph({ text: `${format(day, 'EEEE', { locale: vi })}\n${format(day, 'dd/MM/yyyy')}` })] }),
+                    new TableCell({ children: cellContent })
+                ]}));
+            }
+            docChildren.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: tableRows }));
+            docChildren.push(new Paragraph({ 
+                children: [new TextRun({ text: `Tổng kết người tham gia: `, bold: true }), new TextRun({ text: Array.from(weekUsers).join(', ') || 'Không có' })],
+                spacing: { before: 200, after: 400 }
+            }));
+        }
+        
+        const doc = new Document({ sections: [{ children: docChildren }] });
+        saveAs(await Packer.toBlob(doc), `Lich_Ranh_3_Tuan.docx`);
+    } catch(e) { alert("Lỗi xuất Word"); } finally { setLoading(false); }
   };
 
   const daysOfWeek = useMemo(() => getDaysOfWeek(currentWeek), [currentWeek]);
@@ -129,7 +200,11 @@ export default function App() {
           </div>
           <div className="flex items-center space-x-4">
             {activeTab === 'work' && isAdmin && (
-              <div className="flex space-x-2"><button onClick={handleExportExcel} className="flex items-center space-x-1 bg-green-100 text-green-700 px-3 py-2 rounded-md text-sm font-bold"><Download className="w-4 h-4" /> <span>Xuất Google Sheets</span></button><button onClick={handleOpenManageUsers} className="flex items-center space-x-1 bg-red-100 text-red-700 px-3 py-2 rounded-md text-sm font-bold"><Users className="w-4 h-4" /> <span>User</span></button></div>
+              <div className="flex space-x-2">
+                <button onClick={handleExportDocAdmin} className="flex items-center space-x-1 bg-blue-100 text-blue-700 px-3 py-2 rounded-md text-sm font-bold"><FileCode className="w-4 h-4" /> <span>Google Docs</span></button>
+                <button onClick={handleExportExcelAdmin} className="flex items-center space-x-1 bg-green-100 text-green-700 px-3 py-2 rounded-md text-sm font-bold"><Download className="w-4 h-4" /> <span>Google Sheets</span></button>
+                <button onClick={handleOpenManageUsers} className="flex items-center space-x-1 bg-red-100 text-red-700 px-3 py-2 rounded-md text-sm font-bold"><Users className="w-4 h-4" /> <span>User</span></button>
+              </div>
             )}
             {activeTab === 'work' && pendingBookings.length > 0 && <button onClick={handleSave} disabled={loading} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-bold flex items-center gap-2"><Save className="w-4 h-4" /> Lưu Lịch</button>}
             {currentUser ? (
@@ -179,7 +254,7 @@ export default function App() {
                       let finalRenderList = [...displayBookings];
                       if (isChecked) {
                           finalRenderList.unshift({
-                              userId: { username: currentUser?.username || 'User', color: '#10b981' },
+                              userId: { username: currentUser?.username || 'User', color: currentUser?.color || '#10b981' },
                               content: (myPending?.content !== undefined ? myPending.content : myExistingBooking?.content) || '',
                               isPending: !!myPending
                           } as any);
@@ -198,7 +273,6 @@ export default function App() {
                           </div>
                           
                           <div className="space-y-2 flex-1">
-                            {/* FIX: HIỂN THỊ TỚI 6 NGƯỜI */}
                             {finalRenderList.slice(0, 6).map((b: any, idx) => (
                               <div key={idx} onClick={(e) => { if(b.userId.username === currentUser?.username) handleOpenNote(day, slotIndex, myExistingBooking, e); }} style={{ borderLeftColor: b.userId?.color || '#cbd5e1' }} className={`bg-white border border-gray-100 border-l-4 shadow-sm rounded-lg p-2 text-xs transition-transform ${b.isPending ? 'animate-pulse opacity-80' : ''} ${b.userId.username === currentUser?.username ? 'cursor-pointer hover:bg-indigo-50' : ''}`}>
                                 <div style={{ color: b.userId?.color || '#64748b' }} className="font-black mb-0.5 uppercase text-[10px] flex justify-between">
@@ -210,7 +284,6 @@ export default function App() {
                             ))}
                           </div>
 
-                          {/* NÚT XEM THÊM NẾU > 6 NGƯỜI */}
                           {visibleCount > 6 && (
                               <button onClick={() => setViewMoreModal({date: dateStr, slotIndex})} className="w-full mt-2 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-[10px] font-black text-gray-500 uppercase transition-colors">
                                 Xem thêm (+{visibleCount - 6})
@@ -233,7 +306,6 @@ export default function App() {
         </main>
       ) : ( <div className="animate-in slide-in-from-bottom-4 duration-500"><TravelPlanner /></div> )}
 
-      {/* POPUP NHẬP NỘI DUNG - GIỚI HẠN 150 KÝ TỰ */}
       {noteModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 transform animate-in zoom-in-95">
@@ -256,7 +328,6 @@ export default function App() {
         </div>
       )}
 
-      {/* POPUP XEM THÊM ĐÃ SỬA LỖI TYPESCRIPT */}
       {viewMoreModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform animate-in zoom-in-95">
@@ -270,7 +341,6 @@ export default function App() {
                      const myPending = pendingBookings.find(p => p.date === viewMoreModal.date && p.slotIndex === viewMoreModal.slotIndex);
                      const myExisting = slotBookings.find(b => b.userId._id === currentUser?.userId);
                      
-                     // Gắn Type nghiêm ngặt để Typescript không báo lỗi undefined
                      let fullList: { username: string; color: string; content: string }[] = slotBookings
                         .filter(b => b.userId._id !== currentUser?.userId)
                         .map(b => ({ 
@@ -282,7 +352,7 @@ export default function App() {
                      if (myPending && !myPending.isDelete) {
                          fullList.unshift({ 
                              username: currentUser?.username || "User", 
-                             color: '#10b981', 
+                             color: currentUser?.color || '#10b981', 
                              content: myPending.content || "" 
                          });
                      } else if (myExisting && (!myPending || !myPending.isDelete)) {
@@ -340,7 +410,7 @@ function AuthModals({ isLoginOpen, isRegisterOpen, closeLogin, closeRegister, op
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      if (isRegisterOpen) { await ApiClient.register(username, password); openLogin(); alert('Tạo tài khoản thành công!'); }
+      if (isRegisterOpen) { const user = await ApiClient.register(username, password); openLogin(); alert('Tạo tài khoản thành công!'); }
       else { const user = await ApiClient.login(username, password); onSuccess(user); closeLogin(); }
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };

@@ -72,37 +72,36 @@ app.post('/api/register', async (req, res) => {
         const { username, password } = req.body;
         if (!/[a-zA-Z]/.test(username)) return res.status(400).json({ error: "Tên phải có chữ." });
         if (await User.findOne({ username })) return res.status(400).json({ error: "Tài khoản đã tồn tại." });
-        const user = new User({ username, password }); await user.save(); res.status(201).json({ success: true, userId: user._id });
+        const user = new User({ username, password }); await user.save(); 
+        // TRẢ VỀ KÈM COLOR
+        res.status(201).json({ success: true, userId: user._id, username: user.username, color: user.color });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
 app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         const user = await User.findOne({ username, password });
         if (!user) return res.status(401).json({ error: "Sai tài khoản/mật khẩu." });
-        res.json({ userId: user._id, username: user.username });
+        // TRẢ VỀ KÈM COLOR
+        res.json({ userId: user._id, username: user.username, color: user.color });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
 app.get('/api/bookings', async (req, res) => {
     try { res.json(await Booking.find({ weekId: req.query.weekId }).populate('userId', 'username color')); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// FIX LOGIC LƯU LỊCH CHUẨN XÁC
 app.post('/api/bookings', async (req, res) => {
     try {
         const { userId, weekId, date, slotIndex, content, action } = req.body;
-        
         if (action === 'delete') {
             await Booking.findOneAndDelete({ userId, weekId, date, slotIndex });
             return res.json({ success: true });
         }
-        
         const slotBookings = await Booking.find({ weekId, date, slotIndex });
         const hasMyBooking = slotBookings.some(b => b.userId.toString() === userId);
-        
         if (!hasMyBooking && slotBookings.length >= 15) return res.status(400).json({ error: "Đã đạt tối đa 15 người." });
-
-        // Cho phép content là "" (chuỗi rỗng) để đánh dấu đã tham gia
         const booking = await Booking.findOneAndUpdate(
             { userId, weekId, date, slotIndex }, { content: content || "" }, { upsert: true, new: true }
         );
